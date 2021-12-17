@@ -13,7 +13,6 @@ from telegram.ext import (
 )
 
 
-db.create_tables()
 BANNED_USERS = db.get_banned_users()
 GROUPS_ALLOWED = db.get_groups()
 
