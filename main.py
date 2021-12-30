@@ -47,6 +47,7 @@ def group_messages(update: Update, context: CallbackContext) -> None:
     if update.message.sender_chat is not None:
         update.effective_chat.ban_sender_chat(update.message.sender_chat.id)
         update.effective_message.delete()
+        return
     if 'messages' not in context.user_data:
         context.user_data['messages'] = []
     if len(context.user_data['messages']) >= 5:
