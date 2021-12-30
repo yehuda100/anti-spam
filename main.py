@@ -44,6 +44,9 @@ def new_user_join(update: Update, context: CallbackContext) -> None:
             db.add_banned_user(new_user.id)
 
 def group_messages(update: Update, context: CallbackContext) -> None:
+    if update.message.sender_chat is not None:
+        update.effective_chat.ban_sender_chat(update.message.sender_chat.id)
+        update.effective_message.delete()
     if 'messages' not in context.user_data:
         context.user_data['messages'] = []
     if len(context.user_data['messages']) >= 5:
@@ -104,6 +107,7 @@ def main():
                         url_path=bot_token.TOKEN,
                         webhook_url=bot_token.URL + bot_token.TOKEN,
                         allowed_updates=Update.ALL_TYPES)
+    #updater.start_polling(allowed_updates=Update.ALL_TYPES)
 
     updater.idle()
 
