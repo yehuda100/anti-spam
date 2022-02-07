@@ -1,4 +1,5 @@
 from pymongo import MongoClient
+from bson import int64
 
 
 def db_connection(): 
@@ -10,31 +11,31 @@ def db_connection():
 
 
 def add_banned_user(db, id: int) -> None:
-    db.BannedUsers.insert_one({"id": id})
+    db.BannedUsers.insert_one({"_id": int64.Int64(id)})
 
 def banned_user_exists(db, id: int) -> bool:
-    return db.BannedUsers.find_one({"id": id}) != None
+    return db.BannedUsers.find_one({"_id": id}) != None
 
 def count_banned_users(db) -> int:
     return db.BannedUsers.count_documents({})
 
 def remove_banned_user(db, id: int) -> None:
-    db.BannedUsers.delete_one({"id": id})
+    db.BannedUsers.delete_one({"_id": id})
 
 def add_group(db, id: int) -> None:
-    db.Groups.insert_one({"id": id})
+    db.Groups.insert_one({"_id": int64.Int64(id)})
 
 def get_groups(db) -> list:
     data = db.Groups.find()
-    return set(i["id"] for i in data)
+    return set(i["_id"] for i in data)
 
 def group_exists(db, id: int) -> bool:
-    return db.Groups.find_one({"id": id}) != None
+    return db.Groups.find_one({"_id": id}) != None
 
 def count_groups(db) -> int:
     return db.Groups.count_documents({})
 
-def save_message(db, collection, data):
+def save_message(db, collection, data) -> None:
     db[collection].insert_one(data)
 
 def get_messages(db, collection: str, user_id: int) -> list:

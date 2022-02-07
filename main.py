@@ -116,7 +116,7 @@ def main():
     dp = updater.dispatcher
 
     dp.add_handler(ChatMemberHandler(new_user_join, ChatMemberHandler.CHAT_MEMBER))
-    dp.add_handler(MessageHandler((Filters.chat(m_db.get_groups(db)) & Filters.chat_type.supergroup & ~Filters.command & ~Filters.status_update), group_messages, pass_user_data=True))
+    dp.add_handler(MessageHandler((Filters.chat(m_db.get_groups(db)) & ~Filters.command & ~Filters.status_update), group_messages))
     dp.add_handler(CommandHandler('add_group', add_group))
     dp.add_handler(CommandHandler('check', check))
     dp.add_handler(CommandHandler('stat', statistics))
