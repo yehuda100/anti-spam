@@ -28,6 +28,7 @@ def add_group(db, collection: str, id: int) -> None:
 
 def remove_group(db, collection: str, id: int) -> None:
     db[collection].drop()
+    db.Groups.delete_one({"_id": int64.Int64(id)})
 
 def get_groups(db) -> list:
     data = db.Groups.find()
