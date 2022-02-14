@@ -1,4 +1,4 @@
-from pymongo import MongoClient
+from pymongo import MongoClient, DESCENDING
 from bson import int64
 
 
@@ -22,8 +22,12 @@ def count_banned_users(db) -> int:
 def remove_banned_user(db, id: int) -> None:
     db.BannedUsers.delete_one({"_id": id})
 
-def add_group(db, id: int) -> None:
+def add_group(db, collection: str, id: int) -> None:
+    db[collection].createIndex([("expireAt", DESCENDING)], background=True, expireAfterSeconds=0)
     db.Groups.insert_one({"_id": int64.Int64(id)})
+
+def remove_group(db, collection: str, id: int) -> None:
+    db[collection].drop()
 
 def get_groups(db) -> list:
     data = db.Groups.find()

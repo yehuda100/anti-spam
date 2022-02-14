@@ -77,10 +77,19 @@ def group_messages(update: Update, context: CallbackContext) -> None:
 
 def add_group(update: Update, context: CallbackContext) -> None:
     db = m_db.db_connection()
+    collection = f"Chat_{update.effective_chat.id % 1000}"
     if update.message.from_user.id == 258871997:
         if not m_db.group_exists(db, update.effective_chat.id):
-            m_db.add_group(db, update.effective_chat.id)
+            m_db.add_group(db, collection, update.effective_chat.id)
         Filters.chat().add_chat_ids(chat_id=update.effective_chat.id)
+
+def remove_group(update: Update, context: CallbackContext) -> None:
+    db = m_db.db_connection()
+    collection = f"Chat_{update.effective_chat.id % 1000}"
+    if update.message.from_user.id == 258871997:
+        if m_db.group_exists(db, update.effective_chat.id):
+            m_db.remove_group(db, collection, update.effective_chat.id)
+        Filters.chat().remove_chat_ids(chat_id=update.effective_chat.id)
 
 def check(update: Update, context: CallbackContext) -> None:
     db = m_db.db_connection()
@@ -118,6 +127,7 @@ def main():
     dp.add_handler(ChatMemberHandler(new_user_join, ChatMemberHandler.CHAT_MEMBER))
     dp.add_handler(MessageHandler((Filters.chat(m_db.get_groups(db)) & ~Filters.command & ~Filters.status_update), group_messages))
     dp.add_handler(CommandHandler('add_group', add_group))
+    dp.add_handler(CommandHandler('remove_group', remove_group))
     dp.add_handler(CommandHandler('check', check))
     dp.add_handler(CommandHandler('stat', statistics))
     dp.add_handler(CommandHandler('remove_user', remove_user, Filters.chat(258871997), pass_args=True))
