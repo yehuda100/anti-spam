@@ -3,14 +3,16 @@ import re
 import logging
 import mongodb as m_db
 import bot_token
+import asyncio
 from telegram import Update
 from telegram.ext import (
+    Application,
     Updater,
     CommandHandler,
     CallbackContext,
     ChatMemberHandler,
     MessageHandler,
-    Filters,
+    filters,
 )
 
 
@@ -18,35 +20,29 @@ def check_text(text):
     return bool(re.search(r"[\u0600-\u06ff]+", text))
 
 def check_user(user):
-    if user.language_code in ("ar", "fa"):
+    if user.language_code in ("ar", "fa") or check_text(user.first_name):
         return True
-    return check_text(user.first_name)
+    return False
 
 def check_message(message):
-    if message.text is not None:
-        if check_text(message.text):
-            return True
-    if message.caption is not None:
-        if check_text(message.caption):
-            return True
-    if message.forward_from_chat is not None:
-        if check_text(message.forward_from_chat.title):
-            return True
-    if message.forward_from is not None:
-        if check_text(message.forward_from.first_name):
-            return True
+    if any([
+        message.text and check_text(message.text),
+        message.caption and check_text(message.caption),
+        message.forward_from_chat and check_text(message.forward_from_chat.title),
+        message.forward_from and check_text(message.forward_from.first_name)
+    ]):
+        return True
     return False
-    
-def new_user_join(update: Update, context: CallbackContext) -> None:
-    db = m_db.db_connection()
-    new_user = update.chat_member.new_chat_member.user
-    banned_user = m_db.banned_user_exists(db, new_user.id)
-    if check_user(new_user) or banned_user:
-        update.effective_chat.ban_member(new_user.id, revoke_messages=True)
-        if not banned_user:
-            m_db.add_banned_user(db, new_user.id)
 
-def group_messages(update: Update, context: CallbackContext) -> None:
+async def new_user_join(update: Update, context: CallbackContext) -> None:
+    new_user = update.chat_member.new_chat_member.user
+    banned_user = await m_db.banned_user_exists(new_user.id)
+    if check_user(new_user) or banned_user:
+        await update.effective_chat.ban_member(new_user.id, revoke_messages=True)
+        if not banned_user:
+            await m_db.add_banned_user(new_user.id)
+
+async def group_messages(update: Update, context: CallbackContext) -> None:
     if update.message is None:
         return 
     if update.message.sender_chat is not None:
@@ -54,8 +50,8 @@ def group_messages(update: Update, context: CallbackContext) -> None:
             return
         if update.message.sender_chat.id == update.effective_chat.id:
             return
-        update.effective_chat.ban_sender_chat(update.message.sender_chat.id)
-        update.effective_message.delete()
+        await update.effective_chat.ban_sender_chat(update.message.sender_chat.id)
+        await update.effective_message.delete()
         return
     collection = f"Chat_{update.effective_chat.id % 1000}"
     data = {
@@ -64,86 +60,89 @@ def group_messages(update: Update, context: CallbackContext) -> None:
         "chat_id": update.effective_chat.id,
         "message_id": update.effective_message.message_id
     }
-    db = m_db.db_connection()
-    m_db.save_message(db, collection, data)
+    await m_db.save_message(collection, data)
     if check_message(update.message):
-        update.effective_chat.ban_member(update.message.from_user.id, revoke_messages=True)
-        if not m_db.banned_user_exists(db, update.message.from_user.id):
-            m_db.add_banned_user(db, update.message.from_user.id)
-        messages = m_db.get_messages(db, collection, update.effective_user.id)
+        await update.effective_chat.ban_member(update.message.from_user.id, revoke_messages=True)
+        if not await m_db.banned_user_exists(update.message.from_user.id):
+            await m_db.add_banned_user(update.message.from_user.id)
+        messages = await m_db.get_messages(collection, update.effective_user.id)
         if  len(messages) >= 1:
             for message in messages:
-                context.bot.delete_message(**message)
+                await context.bot.delete_message(**message)
 
-def add_group(update: Update, context: CallbackContext) -> None:
-    db = m_db.db_connection()
+async def add_group(update: Update, context: CallbackContext) -> None:
     collection = f"Chat_{update.effective_chat.id % 1000}"
     if update.message.from_user.id == 258871997:
-        if not m_db.group_exists(db, update.effective_chat.id):
-            m_db.add_group(db, collection, update.effective_chat.id)
-        Filters.chat().add_chat_ids(chat_id=update.effective_chat.id)
+        if not await m_db.group_exists(update.effective_chat.id):
+            await m_db.add_group(collection, update.effective_chat.id)
+        filters.Chat().add_chat_ids(chat_id=update.effective_chat.id)
 
-def remove_group(update: Update, context: CallbackContext) -> None:
-    db = m_db.db_connection()
+async def remove_group(update: Update, context: CallbackContext) -> None:
     collection = f"Chat_{update.effective_chat.id % 1000}"
     if update.message.from_user.id == 258871997:
-        if m_db.group_exists(db, update.effective_chat.id):
-            m_db.remove_group(db, collection, update.effective_chat.id)
-        Filters.chat().remove_chat_ids(chat_id=update.effective_chat.id)
+        if await m_db.group_exists(update.effective_chat.id):
+            await m_db.remove_group(collection, update.effective_chat.id)
+        filters.Chat().remove_chat_ids(chat_id=update.effective_chat.id)
 
-def check(update: Update, context: CallbackContext) -> None:
-    db = m_db.db_connection()
-    if update.message.from_user.id == 258871997 and m_db.group_exists(db, update.effective_chat.id):
-        update.message.reply_text("All Good!", allow_sending_without_reply=True)
-
-def statistics(update: Update, context: CallbackContext) -> None:
-    db = m_db.db_connection()
-    if update.message.from_user.id == 258871997:
-        update.message.reply_text(f"Groups: {m_db.count_groups(db)}.\nBanned Users: {m_db.count_banned_users(db)}.", allow_sending_without_reply=True)
-
-def remove_user(update: Update, context: CallbackContext) -> None:
+async def remove_user(update: Update, context: CallbackContext) -> None:
     if context.args[0].isdigit():
-        db = m_db.db_connection()
         id = int(context.args[0])
-        m_db.remove_banned_user(db, id)
-        update.message.reply_text(f"{id} has been removed.")
+        await m_db.remove_banned_user(id)
+        await update.message.reply_text(f"{id} has been removed.")
     else:
-        update.message.reply_text("The id i have received is not an int.")
+        await update.message.reply_text("The id i have received is not an int.")
+
+async def check(update: Update, context: CallbackContext) -> None:
+    if update.message.from_user.id == 258871997 and await m_db.group_exists(update.effective_chat.id):
+        await update.message.reply_text("All Good!", allow_sending_without_reply=True)
+
+async def statistics(update: Update, context: CallbackContext) -> None:
+    if update.message.from_user.id == 258871997:
+        await update.message.reply_text(f"Groups: {await m_db.count_groups()}.\nBanned Users: {await m_db.count_banned_users()}.", allow_sending_without_reply=True)
+
+
+def run_async(async_func, *args, **kwargs):
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    if not loop.is_running():
+        return loop.run_until_complete(async_func(*args, **kwargs))
+    else:
+        future = asyncio.ensure_future(async_func(*args, **kwargs))
+        loop.run_until_complete(future)
+        return future.result()
 
 
 def main():
-
     logging.basicConfig(
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
     )
-
     logger = logging.getLogger(__name__)
+    
+    app = Application.builder().token(bot_token.TOKEN).build()
+    
 
-    db = m_db.db_connection()
+    allowed_groups = run_async(m_db.get_groups)
 
-    updater = Updater(bot_token.TOKEN)
-    dp = updater.dispatcher
-
-    dp.add_handler(ChatMemberHandler(new_user_join, ChatMemberHandler.CHAT_MEMBER))
-    dp.add_handler(MessageHandler((Filters.chat(m_db.get_groups(db)) & ~Filters.command & ~Filters.status_update), group_messages))
-    dp.add_handler(CommandHandler('add_group', add_group))
-    dp.add_handler(CommandHandler('remove_group', remove_group))
-    dp.add_handler(CommandHandler('check', check))
-    dp.add_handler(CommandHandler('stat', statistics))
-    dp.add_handler(CommandHandler('remove_user', remove_user, Filters.chat(258871997), pass_args=True))
-
-    updater.start_webhook(listen="127.0.0.1",
-                        port=7000,
-                        url_path=bot_token.TOKEN,
-                        webhook_url=bot_token.URL + bot_token.TOKEN,
-                        allowed_updates=Update.ALL_TYPES)
-    #updater.start_polling(allowed_updates=Update.ALL_TYPES)
-
-    updater.idle()
+    app.add_handler(ChatMemberHandler(new_user_join, ChatMemberHandler.CHAT_MEMBER))
+    app.add_handler(MessageHandler((filters.Chat(allowed_groups) & ~filters.COMMAND & ~filters.StatusUpdate.ALL), group_messages))
+    app.add_handler(CommandHandler('add_group', add_group))
+    app.add_handler(CommandHandler('remove_group', remove_group))
+    app.add_handler(CommandHandler('check', check))
+    app.add_handler(CommandHandler('stat', statistics))
+    app.add_handler(CommandHandler('remove_user', remove_user, filters.Chat(258871997), has_args=1))
+    
+    app.run_webhook(
+        listen="127.0.0.1",
+        port=8001,
+        url_path=bot_token.TOKEN,
+        webhook_url=bot_token.URL + bot_token.TOKEN)
 
 
 if __name__ == "__main__":
     main()
-
 
 #by t.me/yehuda100
