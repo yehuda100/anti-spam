@@ -1,7 +1,7 @@
 import motor.motor_asyncio
 import functools
 from bson import int64
-from pymongo import DESCENDING
+from pymongo import errors, DESCENDING
 
 
 # Database Connection
@@ -25,7 +25,10 @@ def with_db_connection(func):
 # Functions to handle operations related to banned users.
 @with_db_connection
 async def add_banned_user(db, id: int) -> None:
-    await db.BannedUsers.insert_one({"_id": int64.Int64(id)})
+    try:
+        await db.BannedUsers.insert_one({"_id": int64.Int64(id)})
+    except errors. DuplicateKeyError:
+        return
 
 @with_db_connection
 async def banned_user_exists(db, id: int) -> bool:
@@ -44,7 +47,10 @@ async def remove_banned_user(db, id: int) -> None:
 @with_db_connection
 async def add_group(db, collection: str, id: int) -> None:
     await db[collection].create_index([("expireAt", DESCENDING)], background=True, expireAfterSeconds=0)
-    await db.Groups.insert_one({"_id": int64.Int64(id)})
+    try:
+        await db.Groups.insert_one({"_id": int64.Int64(id)})
+    except errors.DuplicateKeyError:
+        return
 
 @with_db_connection
 async def remove_group(db, collection: str, id: int) -> None:
