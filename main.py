@@ -4,6 +4,7 @@ import logging
 import mongodb as m_db
 import config
 import utils
+from filters import filter_chat_anmins
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -86,7 +87,7 @@ async def remove_user(update: Update, context: CallbackContext) -> None:
 
 
 async def check(update: Update, context: CallbackContext) -> None:
-    if update.message.from_user.id == config.ADMINS and await m_db.group_exists(update.effective_chat.id):
+    if await m_db.group_exists(update.effective_chat.id):
         await update.message.reply_text("All Good!", allow_sending_without_reply=True)
 
 async def statistics(update: Update, context: CallbackContext) -> None:
@@ -106,11 +107,11 @@ def main():
     allowed_groups = utils.run_async(m_db.get_groups)
 
     app.add_handler(ChatMemberHandler(new_user_joined, ChatMemberHandler.CHAT_MEMBER))
-    app.add_handler(MessageHandler((filters.Chat(allowed_groups) & ~filters.COMMAND & ~filters.StatusUpdate.ALL), group_messages))
+    app.add_handler(MessageHandler((filters.Chat(allowed_groups) & ~filter_chat_anmins & ~filters.COMMAND & ~filters.StatusUpdate.ALL), group_messages))
     app.add_handler(CommandHandler('add_group', add_group))
     app.add_handler(CommandHandler('remove_group', remove_group))
-    app.add_handler(CommandHandler('check', check))
-    app.add_handler(CommandHandler('stat', statistics))
+    app.add_handler(CommandHandler('check', check, filters.ChatType.GROUPS & filters.User(config.ADMINS)))
+    app.add_handler(CommandHandler('stat', statistics, filters.User(config.ADMINS)))
     app.add_handler(CommandHandler('remove_user', remove_user, filters.Chat(config.ADMINS), has_args=1))
     
     app.run_webhook(
