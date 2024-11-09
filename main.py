@@ -36,9 +36,9 @@ def check_message(message):
         return True
     return False
 
-async def check_bot_premissions(chat_id):
-    bot_id = await Bot.get_me().id
-    bot_member = await Bot.get_chat_member(chat_id, bot_id)
+async def check_bot_premissions(context, chat_id):
+    bot = await context.bot.get_me()
+    bot_member = await context.bot.get_chat_member(chat_id, bot.id)
     if bot_member.can_delete_messages and bot_member.can_restrict_members:
         return True
     return False
@@ -86,7 +86,7 @@ async def group_messages(update: Update, context: CallbackContext) -> None:
                 await context.bot.delete_message(**message)
 
 async def add_group(update: Update, context: CallbackContext) -> None:
-    if not await check_bot_premissions(update.effective_chat.id):
+    if not await check_bot_premissions(context, update.effective_chat.id):
         await update.message.reply_text("i don't have premissions in this group.")
     chat_admins = (admin.user.id async for admin in await update.effective_chat.get_administrators())
     context.chat_data['chat_admins'] = chat_admins
@@ -134,8 +134,9 @@ async def start(update: Update, context: CallbackContext) -> None:
 
 
 async def check(update: Update, context: CallbackContext) -> None:
-    if not await check_bot_premissions(update.effective_chat.id):
+    if not await check_bot_premissions(context, update.effective_chat.id):
         await update.message.reply_text("i don't have premissions in this group.")
+        return
     if await m_db.group_exists(update.effective_chat.id):
         await update.message.reply_text("All Good!")
 
