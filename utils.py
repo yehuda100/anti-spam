@@ -15,3 +15,6 @@ def run_async(async_func, *args, **kwargs):
         future = asyncio.ensure_future(async_func(*args, **kwargs))
         loop.run_until_complete(future)
         return future.result()
+    
+
+    #by t.me/yehuda100

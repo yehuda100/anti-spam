@@ -12,3 +12,6 @@ except yaml.YAMLError as exc:
 BOT_TOKEN = config["bot_token"]
 URL = config["url"]
 ADMINS = config["admins"]
+
+
+#by t.me/yehuda100
