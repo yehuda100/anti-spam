@@ -50,7 +50,7 @@ async def user_updates(update: Update, context: CallbackContext) -> None:
 
     if status_change:
         old_status, new_status = status_change
-        admins = (ChatMember.ADMINISTRATOR, ChatMember.CREATOR)
+        admins = (ChatMember.ADMINISTRATOR, ChatMember.OWNER)
         if new_status in admins and old_status not in admins:
             context.chat_data['chat_admins'].add(update.chat_member.new_chat_member.user.id)
         elif old_status in admins and new_status not in admins:
@@ -88,7 +88,7 @@ async def group_messages(update: Update, context: CallbackContext) -> None:
 async def add_group(update: Update, context: CallbackContext) -> None:
     if not await check_bot_premissions(context, update.effective_chat.id):
         await update.message.reply_text("i don't have premissions in this group.")
-    chat_admins = (admin.user.id async for admin in await update.effective_chat.get_administrators())
+    chat_admins = {admin.user.id for admin in await update.effective_chat.get_administrators()}
     context.chat_data['chat_admins'] = chat_admins
     collection = f"Chat_{update.effective_chat.id % 1000}"
     await m_db.add_group(collection, update.effective_chat.id)
