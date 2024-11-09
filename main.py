@@ -4,7 +4,7 @@ import logging
 import mongodb as m_db
 import config
 import utils
-from telegram import Update, ChatMember
+from telegram import Update, ChatMember, Bot
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -33,6 +33,13 @@ def check_message(message):
         message.forward_origin and message.forward_origin.chat and check_text(message.forward_origin.chat.title),
         message.forward_origin and message.forward_origin.sender_user and check_text(message.forward_origin.sender_user.first_name)
     ]):
+        return True
+    return False
+
+async def check_bot_premissions(chat_id):
+    bot_id = await Bot.get_me().id
+    bot_member = await Bot.get_chat_member(chat_id, bot_id)
+    if bot_member.can_delete_messages and bot_member.can_restrict_members:
         return True
     return False
 
@@ -79,6 +86,8 @@ async def group_messages(update: Update, context: CallbackContext) -> None:
                 await context.bot.delete_message(**message)
 
 async def add_group(update: Update, context: CallbackContext) -> None:
+    if not await check_bot_premissions(update.effective_chat.id):
+        await update.message.reply_text("i don't have premissions in this group.")
     chat_admins = (admin.user.id async for admin in await update.effective_chat.get_administrators())
     context.chat_data['chat_admins'] = chat_admins
     collection = f"Chat_{update.effective_chat.id % 1000}"
@@ -91,13 +100,23 @@ async def remove_group(update: Update, context: CallbackContext) -> None:
     await m_db.remove_group(collection, update.effective_chat.id)
     filters.Chat().remove_chat_ids(chat_id=update.effective_chat.id)
 
+async def drop_group(update: Update, context: CallbackContext) -> None:
+    is_member = update.my_chat_member.difference().get('is_member')
+    if is_member is None:
+        return
+    if is_member[1] == False:
+            context.chat_data.clear()
+            collection = f"Chat_{update.effective_chat.id % 1000}"
+            await m_db.remove_group(collection, update.effective_chat.id)
+            filters.Chat().remove_chat_ids(chat_id=update.effective_chat.id)
+
 async def remove_user(update: Update, context: CallbackContext) -> None:
     if context.args[0].isdigit():
         user_id = int(context.args[0])
         await m_db.remove_banned_user(user_id)
         await update.message.reply_text(f"{user_id} has been removed.")
     else:
-        await update.message.reply_text("The id i have received is not an int.")
+        await update.message.reply_text("The ID i have received is not an int.")
 
 
 async def start(update: Update, context: CallbackContext) -> None:
@@ -115,6 +134,8 @@ async def start(update: Update, context: CallbackContext) -> None:
 
 
 async def check(update: Update, context: CallbackContext) -> None:
+    if not await check_bot_premissions(update.effective_chat.id):
+        await update.message.reply_text("i don't have premissions in this group.")
     if await m_db.group_exists(update.effective_chat.id):
         await update.message.reply_text("All Good!")
 
@@ -136,6 +157,7 @@ def main():
     allowed_groups = utils.run_async(m_db.get_groups)
 
     app.add_handler(ChatMemberHandler(user_updates, ChatMemberHandler.CHAT_MEMBER))
+    app.add_handler(ChatMemberHandler(drop_group, ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(MessageHandler((filters.Chat(allowed_groups) &  ~filters.COMMAND & ~filters.StatusUpdate.ALL), group_messages))
     app.add_handler(CommandHandler('start', start, filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler('add_group', add_group, filters.ChatType.GROUPS & filters.User(config.ADMINS)))
