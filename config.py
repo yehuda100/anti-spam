@@ -1,4 +1,7 @@
 import yaml
+import core.utils
+import core.mongodb as db
+from telegram.ext import filters
 
 
 config_file = "config.yaml"
@@ -12,6 +15,9 @@ except yaml.YAMLError as exc:
 BOT_TOKEN = config["bot_token"]
 URL = config["url"]
 ADMINS = config["admins"]
+
+
+allowed_groups = filters.Chat(core.utils.run_async(db.get_groups))
 
 
 #by t.me/yehuda100
