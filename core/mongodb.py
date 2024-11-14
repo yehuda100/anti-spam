@@ -1,7 +1,6 @@
 import motor.motor_asyncio
 from functools import wraps
-from bson import int64
-from pymongo import errors, DESCENDING
+from pymongo import DESCENDING
 
 
 # Database Connection
@@ -24,11 +23,11 @@ def with_db_connection(func):
 # Banned Users Management
 # Functions to handle operations related to banned users.
 @with_db_connection
-async def add_banned_user(id: int, db=None) -> None:
-    try:
-        await db.BannedUsers.insert_one({"_id": int64.Int64(id)})
-    except errors. DuplicateKeyError:
-        return
+async def add_banned_user(id: int, chat_id, db=None) -> None:
+    await db.BannedUsers.update_one(
+        {"_id": id},
+        {"$addToSet": {"chats": chat_id}},
+        upsert=True)
 
 @with_db_connection
 async def banned_user_exists(id: int, db=None) -> bool:
@@ -43,20 +42,30 @@ async def count_banned_users(db=None) -> int:
 async def remove_banned_user(id: int, db=None) -> None:
     await db.BannedUsers.delete_one({"_id": id})
 
+@with_db_connection
+async def get_banned_user_chats(id: int, db=None) -> set:
+    chats = await db.BannedUsers.find_one(
+    {"_id": id},
+    {"_id": 0, "chats": 1})
+    if chats and "chats" in chats:
+        return set(chats["chats"])
+    return set()
+
 # Groups Management
 # Functions to manage groups in the database.
 @with_db_connection
 async def add_group(collection: str, id: int, db=None) -> None:
     await db[collection].create_index([("expireAt", DESCENDING)], background=True, expireAfterSeconds=0)
-    try:
-        await db.Groups.insert_one({"_id": int64.Int64(id)})
-    except errors.DuplicateKeyError:
-        return
+    await db.Groups.update_one(
+        {"_id": id},
+        {"$setOnInsert": {"_id": id}},
+        upsert=True)
+
 
 @with_db_connection
 async def remove_group(collection: str, id: int, db=None) -> None:
     await db[collection].drop()
-    await db.Groups.delete_one({"_id": int64.Int64(id)})
+    await db.Groups.delete_one({"_id": id})
 
 @with_db_connection
 async def get_groups(db=None) -> set:

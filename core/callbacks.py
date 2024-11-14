@@ -4,6 +4,7 @@ from core.utils import is_bot_authorized, check_user, check_message
 import config
 from telegram import Update, ChatMember
 from telegram.ext import CallbackContext
+from telegram.error import TelegramError
 
 
 # Commands callback functions
@@ -40,7 +41,13 @@ async def remove_user(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text("Which one?")
     if context.args[0].isdigit():
         user_id = int(context.args[0])
+        chats = await db.get_banned_user_chats(user_id)
         await db.remove_banned_user(user_id)
+        async for chat in chats:
+            try:
+                await context.bot.unban_chat_member(chat, user_id, only_if_banned=True)
+            except TelegramError:
+                continue
         await update.message.reply_markdown_v2(f"User [{user_id}](tg://user?id={user_id}) has been removed.")
     else:
         await update.message.reply_text("The ID i have received is not an int.")
@@ -78,7 +85,7 @@ async def user_updates(update: Update, context: CallbackContext) -> None:
         if check_user(new_user) or banned_user:
             await update.effective_chat.ban_member(new_user.id, revoke_messages=True)
             if not banned_user:
-                await db.add_banned_user(new_user.id)
+                await db.add_banned_user(new_user.id, update.effective_chat.id)
 
 
 # Bot status update callback function
@@ -114,7 +121,7 @@ async def group_messages(update: Update, context: CallbackContext) -> None:
 
     if check_message(update.message):
         await update.effective_chat.ban_member(update.message.from_user.id)
-        await db.add_banned_user(update.message.from_user.id)
+        await db.add_banned_user(update.message.from_user.id, update.effective_chat.id)
         messages = await db.get_messages(collection, update.effective_user.id)
         if  len(messages) >= 1:
             for message in messages:
