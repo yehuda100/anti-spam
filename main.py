@@ -22,10 +22,12 @@ def main():
     
     app = Application.builder().token(config.BOT_TOKEN).persistence(persistence=bot_persistence).build()
     
+    text_and_caption = (filters.TEXT & ~filters.COMMAND) | filters.CAPTION
 
     app.add_handler(ChatMemberHandler(user_updates, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(ChatMemberHandler(bot_status_changed, ChatMemberHandler.MY_CHAT_MEMBER))
-    app.add_handler(MessageHandler((config.allowed_groups &  ~filters.COMMAND & ~filters.StatusUpdate.ALL), group_messages))
+    app.add_handler(MessageHandler(config.allowed_groups & text_and_caption, group_text))
+    app.add_handler(MessageHandler(config.allowed_groups & filters.USER, group_messages))
     app.add_handler(CommandHandler('start', start, filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler('add_group', add_group, filters.ChatType.GROUPS & filters.User(config.ADMINS)))
     app.add_handler(CommandHandler('remove_group', remove_group, filters.ChatType.GROUPS & filters.User(config.ADMINS)))

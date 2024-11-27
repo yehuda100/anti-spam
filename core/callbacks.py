@@ -105,9 +105,7 @@ async def bot_status_changed(update: Update, context: CallbackContext) -> None:
 
 
 # Group messages callback function
-async def group_messages(update: Update, context: CallbackContext) -> None:
-    if update.message is None:
-        return 
+async def group_text(update: Update, context: CallbackContext) -> None:
     if update.message.from_user.id in context.chat_data.get('chat_admins', set()):
         return
     collection = f"Chat_{update.effective_chat.id % 1000}"
@@ -126,6 +124,20 @@ async def group_messages(update: Update, context: CallbackContext) -> None:
         if  len(messages) >= 1:
             for message in messages:
                 await context.bot.delete_message(**message)
+
+
+async def group_messages(update: Update, context: CallbackContext) -> None:
+    if update.message.from_user.id in context.chat_data.get('chat_admins', set()):
+        return
+    collection = f"Chat_{update.effective_chat.id % 1000}"
+    data = {
+        "expireAt": datetime.now() + timedelta(days=3),
+        "user_id": update.effective_user.id,
+        "chat_id": update.effective_chat.id,
+        "message_id": update.effective_message.message_id
+    }
+    await db.save_message(collection, data)
+
 
 
 #by t.me/yehuda100
