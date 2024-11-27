@@ -2,20 +2,19 @@ import asyncio
 import re
 
 
-# This function runs an async function within a sync function, while checking the event loop status.
 def run_async(async_func, *args, **kwargs):
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    
-    if not loop.is_running():
-        return loop.run_until_complete(async_func(*args, **kwargs))
-    else:
+
+    if loop.is_running():
         future = asyncio.ensure_future(async_func(*args, **kwargs))
-        loop.run_until_complete(future)
-        return future.result()
+        return loop.run_until_complete(future)
+    else:
+        return loop.run_until_complete(async_func(*args, **kwargs))
+
     
 
 # Checks if the bot has the required permissions in a given chat.
