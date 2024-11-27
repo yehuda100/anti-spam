@@ -61,7 +61,6 @@ async def add_group(collection: str, id: int, db=None) -> None:
         {"$setOnInsert": {"_id": id}},
         upsert=True)
 
-
 @with_db_connection
 async def remove_group(collection: str, id: int, db=None) -> None:
     await db[collection].drop()
