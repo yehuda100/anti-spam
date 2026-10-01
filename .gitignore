@@ -1,0 +1,6 @@
+config.yaml
+__pycache__/
+.pytest_cache/
+*.pyc
+anti_spam_persistence
+.venv/
