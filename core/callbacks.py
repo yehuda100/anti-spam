@@ -162,7 +162,9 @@ async def log_ban(context, user, chat, reason: str) -> None:
 
 async def perform_ban(update, context, user, reason: str) -> None:
     chat = update.effective_chat
-    await chat.ban_member(user.id, revoke_messages=True)
+    # False keeps messages older than the 3-day store. Telegram deletes the
+    # user's history in a supergroup when revoke_messages is true or omitted.
+    await chat.ban_member(user.id, revoke_messages=False)
     await db.add_banned_user(user.id, chat.id)
     stored = await db.get_messages(user.id, chat.id)
     for message in stored:

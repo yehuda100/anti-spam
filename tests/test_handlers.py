@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -90,6 +90,18 @@ def _stored(user_id, chat_id, message_id):
     }
 
 
+def _assert_ban_keeps_older_history(chat, user_id):
+    """Fail if this ban would ask Telegram to delete history outside the store.
+
+    Omitting revoke_messages, or setting it true, makes Telegram delete the
+    user's older messages in a supergroup. Only the stored 3-day window is
+    removed separately with delete_message.
+    """
+    chat.ban_member.assert_awaited_once()
+    assert chat.ban_member.await_args.args[0] == user_id
+    assert chat.ban_member.await_args.kwargs.get("revoke_messages") is False
+
+
 @pytest.mark.parametrize("field", ["text", "caption"])
 async def test_arabic_message_bans_and_deletes_stored_messages(database, field):
     chat = FakeChat(-100123)
@@ -107,14 +119,17 @@ async def test_arabic_message_bans_and_deletes_stored_messages(database, field):
     context = _context()
     await callbacks.group_messages(_message_update(chat, message), context)
 
-    chat.ban_member.assert_awaited_once()
-    assert chat.ban_member.await_args.args[0] == user.id
-    assert chat.ban_member.await_args.kwargs["revoke_messages"] is True
+    _assert_ban_keeps_older_history(chat, user.id)
     deleted = {
         (call.kwargs["chat_id"], call.kwargs["message_id"])
         for call in context.bot.delete_message.await_args_list
     }
     assert deleted == {(chat.id, 3), (chat.id, 10)}
+    # Id 1 was never stored, so it is older than the 3-day window and must stay.
+    assert (chat.id, 1) not in deleted
+    saved = next(doc for doc in database["Messages"].docs if doc["message_id"] == 10)
+    remaining = saved["expireAt"] - datetime.now()
+    assert timedelta(days=2, hours=23) < remaining <= timedelta(days=3)
     assert await mongodb.get_messages(user.id, -100999) == [
         {"chat_id": -100999, "message_id": 4}
     ]
@@ -176,8 +191,12 @@ async def test_edited_arabic_message_is_banned(database):
     message = _content_message(chat, user, text=ARABIC)
     context = _context()
     await callbacks.group_messages(_message_update(chat, message, edited=True), context)
-    chat.ban_member.assert_awaited_once()
-    assert chat.ban_member.await_args.kwargs["revoke_messages"] is True
+    _assert_ban_keeps_older_history(chat, user.id)
+    deleted = {
+        (call.kwargs["chat_id"], call.kwargs["message_id"])
+        for call in context.bot.delete_message.await_args_list
+    }
+    assert deleted == {(chat.id, message.message_id)}
 
 
 async def test_forwarded_title_on_non_text_message_is_banned(database):
@@ -188,8 +207,12 @@ async def test_forwarded_title_on_non_text_message_is_banned(database):
     message = _content_message(chat, user, text=None, caption=None, forward_origin=origin)
     context = _context()
     await callbacks.group_messages(_message_update(chat, message), context)
-    chat.ban_member.assert_awaited_once()
-    context.bot.delete_message.assert_awaited()
+    _assert_ban_keeps_older_history(chat, user.id)
+    deleted = {
+        (call.kwargs["chat_id"], call.kwargs["message_id"])
+        for call in context.bot.delete_message.await_args_list
+    }
+    assert deleted == {(chat.id, message.message_id)}
 
 
 async def test_ban_posts_one_log_line_without_buttons(database, monkeypatch):
@@ -236,6 +259,7 @@ async def test_already_banned_join_records_chat_without_a_second_insert(database
     chat = FakeChat(-100222, title="Second group")
     _allow(chat.id)
     await mongodb.add_banned_user(user.id, previous)
+    await mongodb.save_message(_stored(user.id, chat.id, 8))
     banned = database["BannedUsers"]
     assert banned.inserted == 1
 
@@ -249,8 +273,13 @@ async def test_already_banned_join_records_chat_without_a_second_insert(database
     context = _context()
     await callbacks.user_updates(update, context)
 
-    chat.ban_member.assert_awaited_once()
-    assert chat.ban_member.await_args.kwargs["revoke_messages"] is True
+    _assert_ban_keeps_older_history(chat, user.id)
+    deleted = {
+        (call.kwargs["chat_id"], call.kwargs["message_id"])
+        for call in context.bot.delete_message.await_args_list
+    }
+    assert deleted == {(chat.id, 8)}
+    assert (chat.id, 2) not in deleted
     assert banned.inserted == 1
     assert len(banned.docs) == 1
     assert await mongodb.get_banned_user_chats(user.id) == {previous, chat.id}
